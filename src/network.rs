@@ -198,10 +198,9 @@ impl Network {
         softmax_derivative.par_map_inplace(|x| *x = *x * (1.0 - *x));
 
         //combined with respect to cost
-        let product = softmax_derivative * initial_cost_derivative;
+        let bias_product = softmax_derivative * initial_cost_derivative;
         //cost bias
-        let cost_bias = product * &self.network[NETWORK_SIZE - 1].biases.biases;
-        self.network[NETWORK_SIZE - 1].biases.gradient = cost_bias; //assign to bias gradient
+        self.network[NETWORK_SIZE - 1].biases.gradient = bias_product; //assign to bias gradient
 
         //cost respect to weights
         let mut backward_activations = self.network[NETWORK_SIZE - 2]
