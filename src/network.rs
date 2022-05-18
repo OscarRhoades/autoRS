@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use ndarray::{concatenate, Axis};
+use ndarray::{concatenate, Axis, stack};
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -125,6 +125,33 @@ pub struct Network {
     train_sessions: usize,
 }
 
+
+fn weight_derivative(activations: &Array1<f32>, scalar_derivative: &Array1<f32>, row_number: usize) -> Array2<f32> {
+
+    let array = activations.clone();
+    let base = stack![Axis(0), array, array.clone()];
+    let mut base2 = concatenate![Axis(0), base, base];
+
+    let iterations = (row_number - 4) / 2;
+
+    for _x in 0..iterations {
+        let temp = concatenate![Axis(0), base2, base];
+        base2 = temp;
+    }
+
+
+
+    for (index, mut row) in base2.rows_mut().into_iter().enumerate() {
+        row.par_map_inplace(|x| *x = *x * scalar_derivative[index]);
+    }
+
+    
+
+    println!("{:?}", base2);
+
+    base2
+}
+
 impl Network {
     pub fn new() -> Network {
         let mut network_build = Network {
@@ -197,17 +224,71 @@ impl Network {
         softmax_derivative.par_map_inplace(|x| *x = *x / softmax_sum);
         softmax_derivative.par_map_inplace(|x| *x = *x * (1.0 - *x));
 
-        //combined with respect to cost
-        let bias_product = softmax_derivative * initial_cost_derivative;
-        //cost bias
-        self.network[NETWORK_SIZE - 1].biases.gradient = bias_product; //assign to bias gradient
+        //combined with respect to cost (dc/dw)
+        let base_product = softmax_derivative * initial_cost_derivative;
+        let base_clone = base_product.clone();
+        //set dc/db to the gradient portion
+        self.network[NETWORK_SIZE - 1].biases.gradient = base_product; //should add to array
 
         //cost respect to weights
-        let mut backward_activations = self.network[NETWORK_SIZE - 2]
+        let backward_activations = self.network[NETWORK_SIZE - 2]
             .activations
             .activations
             .clone();
-        let mut weight_addition = self.network[NETWORK_SIZE - 1].weights.gradient.clone();
+        
+        let weight_grad = weight_derivative(&backward_activations, &base_clone, self.network[NETWORK_SIZE - 1].activations.activations.len());
+
+        // sets the calculated weight gradient to the total gradient
+        self.network[NETWORK_SIZE - 1].weights.gradient = weight_grad;
+
+
+        //calculate the activations for the next layer
+        //there are the previous number of nodes
+        //calculates column wise
+
+
+        let base_weights = self.network[NETWORK_SIZE - 1].weights.matrix.clone();
+
+        
+
+
+
+    }
+    
+
+    pub fn general_backpropagate(&mut self, layer_number: usize, answer: usize) {
+        let mut correct_distrobution = ndarray::Array1::<f32>::zeros(OUTPUT_SIZE);
+        correct_distrobution[answer] = 1.0;
+
+        //cost with respect to first activation
+        let initial_cost_derivative =
+            (correct_distrobution - &self.network[layer_number].activations.activations) * -1.0;
+
+        //first activation with respect to z which is softmax
+        let mut softmax_derivative = self.network[NETWORK_SIZE - 1]
+            .activations
+            .arguments
+            .map(|x| (*x as f32).exp());
+        let softmax_sum = softmax_derivative.sum();
+        softmax_derivative.par_map_inplace(|x| *x = *x / softmax_sum);
+        softmax_derivative.par_map_inplace(|x| *x = *x * (1.0 - *x));
+
+        //combined with respect to cost (dc/dw)
+        let base_product = softmax_derivative * initial_cost_derivative;
+        let base_clone = base_product.clone();
+        //set dc/db to the gradient portion
+        self.network[NETWORK_SIZE - 1].biases.gradient = base_product; //should add to array
+
+        //cost respect to weights
+        let backward_activations = self.network[layer_number - 1]
+            .activations
+            .activations
+            .clone();
+        
+        let weight_grad = weight_derivative(&backward_activations, &base_clone, self.network[NETWORK_SIZE - 1].activations.activations.len());
+
+        // sets the calculated weight gradient to the total gradient
+        self.network[NETWORK_SIZE - 1].weights.gradient = weight_grad;
     }
 
     pub fn mount(&mut self, image: Array2<f32>, row_size: usize) {

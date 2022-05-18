@@ -2,6 +2,26 @@ pub mod network;
 pub mod data;
 
 
+use ndarray::prelude::*;
+use ndarray::{concatenate, Axis, stack};
+
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::Ix1;
+
+use ndarray::{arr1, arr2, array};
+use std::error::Error;
+
+use ndarray::parallel::prelude::*;
+
+use rand::{thread_rng, Rng};
+
+
+
+
+
+
+
 fn main() {
     
     const DATA_ITEM: usize = 950;
@@ -21,7 +41,4 @@ fn main() {
     network_main.initial_backpropagate(data.1 as usize);
 
 
-    // let cost = network_main.cost(3);
-    // println!("{}", cost);
-    
 }
